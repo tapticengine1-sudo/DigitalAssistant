@@ -1,0 +1,21 @@
+<resources>
+    <style name="Theme.Assistant" parent="Theme.Material3.DayNight.NoActionBar" />
+
+    <style name="Theme.Assistant.Overlay" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Assistant.Overlay</item>
+        <item name="android:windowSoftInputMode">stateVisible|adjustResize</item>
+    </style>
+
+    <style name="Animation.Assistant.Overlay" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/assist_sheet_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/assist_sheet_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/assist_sheet_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/assist_sheet_exit</item>
+    </style>
+</resources>
