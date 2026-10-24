@@ -3,6 +3,5 @@
     <string name="app_name">Ptako Helper</string>
     <string name="new_chat">Новый чат</string>
     <string name="hint_write">Пишите...</string>
-    <string name="new_chat">Новый чат</string>
     <string name="hold_to_talk">Удерживайте, чтобы говорить</string>
 </resources>
