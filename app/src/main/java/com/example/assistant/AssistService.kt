@@ -15,14 +15,16 @@ class AssistSessionService : VoiceInteractionSessionService() {
 }
 
 class AssistSession(context: Context) : VoiceInteractionSession(context) {
+    override fun onCreate() {
+        super.onCreate()
+        // Без UI сессии — иначе система рисует полноэкранную заглушку
+        setUiEnabled(false)
+    }
+
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
-        // Шторка с клавиатурой; SpeechRecognizer в оболочке ассистента даёт error 10
-        val i = Intent(context, MainActivity::class.java)
-            .setAction(Intent.ACTION_ASSIST)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra(MainActivity.EXTRA_OVERLAY, true)
-        context.startActivity(i)
+        setUiEnabled(false)
+        OverlayLauncher.open(context.applicationContext)
         hide()
     }
 }

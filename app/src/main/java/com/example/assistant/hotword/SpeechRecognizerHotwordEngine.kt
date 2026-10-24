@@ -38,18 +38,25 @@ class SpeechRecognizerHotwordEngine(
         running = false
         restartPosted = false
         main.removeCallbacksAndMessages(null)
-        try {
-            recognizer?.cancel()
-        } catch (_: Exception) {
-        }
+        destroyRecognizer()
         listener?.onListeningChanged(false)
     }
 
     override fun release() {
         stop()
-        recognizer?.destroy()
-        recognizer = null
         listener = null
+    }
+
+    private fun destroyRecognizer() {
+        try {
+            recognizer?.cancel()
+        } catch (_: Exception) {
+        }
+        try {
+            recognizer?.destroy()
+        } catch (_: Exception) {
+        }
+        recognizer = null
     }
 
     private fun ensureListening() {
@@ -82,10 +89,12 @@ class SpeechRecognizerHotwordEngine(
 
                     override fun onError(error: Int) {
                         listener?.onListeningChanged(false)
-                        // 7 = NO_MATCH, 6 = SPEECH_TIMEOUT — нормально для hotword-цикла
                         val delay = when (error) {
                             SpeechRecognizer.ERROR_CLIENT,
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 800L
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                                destroyRecognizer()
+                                800L
+                            }
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                                 listener?.onEngineError("Нет разрешения RECORD_AUDIO")
                                 return
@@ -106,6 +115,7 @@ class SpeechRecognizerHotwordEngine(
             recognizer?.startListening(intent)
         } catch (e: Exception) {
             listener?.onEngineError(e.message ?: "startListening failed")
+            destroyRecognizer()
             scheduleRestart(1000)
         }
     }
@@ -114,12 +124,10 @@ class SpeechRecognizerHotwordEngine(
         val list = bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: return
         for (utterance in list) {
             val hit = HotwordPhrases.containsHotword(utterance, phrases) ?: continue
-            // Пауза перед повторным слушанием, чтобы не зациклиться на том же результате
             running = false
-            try {
-                recognizer?.cancel()
-            } catch (_: Exception) {
-            }
+            restartPosted = false
+            main.removeCallbacksAndMessages(null)
+            destroyRecognizer()
             listener?.onHotword(hit)
             main.postDelayed({
                 running = true

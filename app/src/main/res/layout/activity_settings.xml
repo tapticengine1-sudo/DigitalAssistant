@@ -37,11 +37,12 @@
             android:layout_marginTop="8dp"
             android:text="Озвучивать ответы" />
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/switchContinuous"
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Непрерывный голосовой диалог" />
+            android:layout_marginTop="4dp"
+            android:text="Непрерывный диалог: кнопка 🎙 Voice Mode на главном экране"
+            android:textSize="13sp" />
 
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchMultimodal"
@@ -122,5 +123,26 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Режим «Не беспокоить»" />
+
+        <Button
+            android:id="@+id/btnOverlay"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Показ поверх других окон" />
+
+        <Button
+            android:id="@+id/btnBattery"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Игнорировать оптимизацию батареи" />
+
+        <Button
+            android:id="@+id/btnFullScreen"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Полный экран поверх блокировки" />
     </LinearLayout>
 </ScrollView>

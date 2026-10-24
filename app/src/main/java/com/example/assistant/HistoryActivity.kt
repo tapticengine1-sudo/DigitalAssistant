@@ -2,13 +2,15 @@ package com.example.assistant
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -17,7 +19,7 @@ import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.concurrent.thread
+import java.util.concurrent.Executors
 
 class HistoryActivity : AppCompatActivity() {
 
@@ -25,9 +27,10 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var list: RecyclerView
     private lateinit var hint: TextView
     private lateinit var search: EditText
-    private val rows = mutableListOf<HistoryRow>()
     private lateinit var adapter: HistoryAdapter
-    private val fmt = SimpleDateFormat("d MMM, HH:mm", Locale("ru"))
+    private val main = Handler(Looper.getMainLooper())
+    private val io = Executors.newSingleThreadExecutor()
+    private var refreshGen = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,7 +39,8 @@ class HistoryActivity : AppCompatActivity() {
         list = findViewById(R.id.list)
         hint = findViewById(R.id.hint)
         search = findViewById(R.id.search)
-        adapter = HistoryAdapter(rows,
+
+        adapter = HistoryAdapter(
             onClick = { row ->
                 when (row) {
                     is HistoryRow.ConversationItem -> openConversation(row.conversation.id)
@@ -47,7 +51,9 @@ class HistoryActivity : AppCompatActivity() {
                 if (row is HistoryRow.ConversationItem) confirmDelete(row.conversation)
             }
         )
+        list.itemAnimator = null
         list.layoutManager = LinearLayoutManager(this)
+        list.setHasFixedSize(false)
         list.adapter = adapter
 
         findViewById<Button>(R.id.btnBack).setOnClickListener { finish() }
@@ -70,39 +76,53 @@ class HistoryActivity : AppCompatActivity() {
         refresh(search.text?.toString().orEmpty())
     }
 
+    override fun onDestroy() {
+        refreshGen++
+        io.shutdownNow()
+        super.onDestroy()
+    }
+
     private fun refresh(query: String) {
-        thread {
-            val q = query.trim()
-            val data = if (q.isEmpty()) {
-                store.listConversations().map { HistoryRow.ConversationItem(it) }
-            } else {
-                store.search(q).map { HistoryRow.SearchItem(it) }
+        val gen = ++refreshGen
+        val q = query.trim()
+        io.execute {
+            val data = try {
+                if (q.isEmpty()) {
+                    store.listConversations().map { HistoryRow.ConversationItem(it) }
+                } else {
+                    store.search(q).map { HistoryRow.SearchItem(it) }
+                }
+            } catch (_: Exception) {
+                emptyList()
             }
-            runOnUiThread {
+            main.post {
+                if (isFinishing || isDestroyed || gen != refreshGen) return@post
+                if (!::adapter.isInitialized || !::list.isInitialized) return@post
                 hint.text = if (q.isEmpty()) "Диалоги" else "Найдено: ${data.size}"
-                rows.clear()
-                rows.addAll(data)
-                adapter.notifyDataSetChanged()
+                adapter.replace(data)
             }
         }
     }
 
     private fun openConversation(id: Long) {
-        setResult(
-            RESULT_OK,
-            Intent().putExtra(MainActivity.EXTRA_CONVERSATION_ID, id)
-        )
+        setResult(RESULT_OK, Intent().putExtra(MainActivity.EXTRA_CONVERSATION_ID, id))
         finish()
     }
 
     private fun confirmDelete(c: Conversation) {
         AlertDialog.Builder(this)
             .setTitle("Удалить диалог?")
-            .setMessage(c.title)
+            .setMessage(c.title.ifBlank { "Диалог" })
             .setPositiveButton("Удалить") { _, _ ->
-                thread {
-                    store.deleteConversation(c.id)
-                    runOnUiThread { refresh(search.text?.toString().orEmpty()) }
+                val genHint = search.text?.toString().orEmpty()
+                io.execute {
+                    try {
+                        store.deleteConversation(c.id)
+                    } catch (_: Exception) {
+                    }
+                    main.post {
+                        if (!isFinishing && !isDestroyed) refresh(genHint)
+                    }
                 }
             }
             .setNegativeButton("Отмена", null)
@@ -114,41 +134,60 @@ class HistoryActivity : AppCompatActivity() {
         data class SearchItem(val hit: SearchHit) : HistoryRow()
     }
 
-    private inner class HistoryAdapter(
-        private val items: List<HistoryRow>,
+    private class HistoryAdapter(
         private val onClick: (HistoryRow) -> Unit,
         private val onLongClick: (HistoryRow) -> Unit
     ) : RecyclerView.Adapter<HistoryAdapter.VH>() {
 
-        inner class VH(val root: LinearLayout, val title: TextView, val sub: TextView) :
-            RecyclerView.ViewHolder(root)
+        private val items = mutableListOf<HistoryRow>()
+        private val fmt = SimpleDateFormat("d MMM, HH:mm", Locale("ru"))
+
+        fun replace(data: List<HistoryRow>) {
+            items.clear()
+            items.addAll(data)
+            notifyDataSetChanged()
+        }
+
+        class VH(view: View) : RecyclerView.ViewHolder(view) {
+            val title: TextView = view.findViewById(R.id.title)
+            val subtitle: TextView = view.findViewById(R.id.subtitle)
+        }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val root = LayoutInflater.from(parent.context)
-                .inflate(android.R.layout.simple_list_item_2, parent, false) as LinearLayout
-            return VH(
-                root,
-                root.findViewById(android.R.id.text1),
-                root.findViewById(android.R.id.text2)
-            )
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_history, parent, false)
+            return VH(view)
         }
 
         override fun onBindViewHolder(holder: VH, position: Int) {
-            val row = items[position]
+            if (position < 0 || position >= items.size) return
+            val row = items[position] ?: return
             when (row) {
                 is HistoryRow.ConversationItem -> {
-                    holder.title.text = row.conversation.title
-                    holder.sub.text = fmt.format(Date(row.conversation.updatedAt))
+                    val title = row.conversation.title
+                    holder.title.text = if (title.isNullOrBlank()) "Диалог" else title
+                    holder.subtitle.text = try {
+                        fmt.format(Date(row.conversation.updatedAt))
+                    } catch (_: Exception) {
+                        ""
+                    }
                 }
                 is HistoryRow.SearchItem -> {
                     val m = row.hit.message
                     val who = if (m.isUser) "Вы" else "Ассистент"
-                    holder.title.text = "$who: ${m.text.take(100)}"
-                    holder.sub.text = "${row.hit.conversationTitle} · ${fmt.format(Date(m.createdAt))}"
+                    val body = m.text.orEmpty().take(100)
+                    holder.title.text = "$who: $body"
+                    val whenStr = try {
+                        fmt.format(Date(m.createdAt))
+                    } catch (_: Exception) {
+                        ""
+                    }
+                    val convTitle = row.hit.conversationTitle.ifBlank { "Диалог" }
+                    holder.subtitle.text = "$convTitle · $whenStr"
                 }
             }
-            holder.root.setOnClickListener { onClick(row) }
-            holder.root.setOnLongClickListener {
+            holder.itemView.setOnClickListener { onClick(row) }
+            holder.itemView.setOnLongClickListener {
                 onLongClick(row)
                 true
             }

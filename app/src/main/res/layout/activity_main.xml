@@ -38,13 +38,36 @@
             android:textSize="22sp" />
     </LinearLayout>
 
-    <androidx.appcompat.widget.SwitchCompat
-        android:id="@+id/switchContinuous"
+    <LinearLayout
+        android:id="@+id/voiceModeBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:text="Непрерывный голосовой диалог" />
+        android:background="#1A3F51B5"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/voiceModeStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:text="Voice Mode"
+            android:textColor="#FF3F51B5"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnStopVoice"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Стоп"
+            android:textColor="#FFC62828" />
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list"
@@ -83,9 +106,18 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Напишите или нажмите 🎤"
+            android:hint="Напишите или 🎤 / Voice"
             android:inputType="textMultiLine|textCapSentences"
             android:maxLines="4" />
+
+        <Button
+            android:id="@+id/btnVoiceMode"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎙"
+            android:textSize="20sp"
+            android:contentDescription="Voice Mode" />
 
         <Button
             android:id="@+id/btnMic"

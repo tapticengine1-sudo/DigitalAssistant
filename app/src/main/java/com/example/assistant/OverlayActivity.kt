@@ -1,0 +1,261 @@
+package com.example.assistant
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.example.assistant.hotword.HotwordService
+import kotlin.concurrent.thread
+
+/**
+ * Компактная полупрозрачная шторка поверх текущего приложения / lock screen.
+ * Не использует SpeechRecognizer (error 10 в оболочке Assist).
+ */
+class OverlayActivity : AppCompatActivity() {
+
+    private val msgs = mutableListOf<Msg>()
+    private lateinit var adapter: ChatAdapter
+    private lateinit var list: RecyclerView
+    private lateinit var input: EditText
+    private var attachPreview: TextView? = null
+    private lateinit var client: DeepSeekClient
+    private lateinit var store: ChatStore
+    private var conversationId: Long = -1L
+    private var pendingAttachment: PendingAttachment? = null
+
+    private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: SecurityException) {
+        }
+        val att = AttachmentReader.fromUri(this, uri) ?: run {
+            Toast.makeText(this, "Не удалось открыть файл", Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        pendingAttachment = att
+        updateAttachPreview()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_Assistant_Overlay)
+        super.onCreate(savedInstanceState)
+        applyLockScreenFlags()
+        setupOverlayWindow()
+        setContentView(R.layout.activity_assist)
+
+        store = ChatStore.get(this)
+        client = DeepSeekClient(this)
+        list = findViewById(R.id.list)
+        input = findViewById(R.id.input)
+        attachPreview = findViewById(R.id.attachPreview)
+        adapter = ChatAdapter(msgs)
+        list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
+        list.adapter = adapter
+
+        thread {
+            val id = try {
+                store.createConversation("Оверлей").id
+            } catch (_: Exception) {
+                -1L
+            }
+            runOnUiThread { conversationId = id }
+        }
+
+        findViewById<Button>(R.id.btnAttach).setOnClickListener {
+            pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
+        }
+        attachPreview?.setOnClickListener {
+            pendingAttachment = null
+            updateAttachPreview()
+        }
+        findViewById<Button>(R.id.btnSend).setOnClickListener { submit() }
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
+                submit(); true
+            } else false
+        }
+
+        if (intent.getBooleanExtra(EXTRA_FROM_HOTWORD, false)) {
+            Toast.makeText(this, "Джарвис на связи", Toast.LENGTH_SHORT).show()
+        }
+        input.post { focusInputAndShowKeyboard() }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        HotwordService.pause(this)
+    }
+
+    override fun onStop() {
+        HotwordService.resume(this)
+        super.onStop()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyLockScreenFlags()
+        input.post { focusInputAndShowKeyboard() }
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_OUTSIDE) {
+            finish()
+            return true
+        }
+        return super.onTouchEvent(event)
+    }
+
+    private fun applyLockScreenFlags() {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+        @Suppress("DEPRECATION")
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private fun setupOverlayWindow() {
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+        val wlp = window.attributes
+        wlp.gravity = Gravity.BOTTOM
+        wlp.width = WindowManager.LayoutParams.MATCH_PARENT
+        wlp.height = WindowManager.LayoutParams.WRAP_CONTENT
+        wlp.dimAmount = 0.4f
+        wlp.flags = wlp.flags or
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        if (Build.VERSION.SDK_INT < 27) {
+            @Suppress("DEPRECATION")
+            wlp.flags = wlp.flags or
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        }
+        window.attributes = wlp
+        window.setLayout(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        )
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
+        window.setGravity(Gravity.BOTTOM)
+    }
+
+    private fun focusInputAndShowKeyboard() {
+        input.isFocusable = true
+        input.isFocusableInTouchMode = true
+        input.requestFocus()
+        val imm = getSystemService(InputMethodManager::class.java) ?: return
+        imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        input.postDelayed({
+            if (!isFinishing) {
+                input.requestFocus()
+                imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }, 150)
+    }
+
+    private fun updateAttachPreview() {
+        val tv = attachPreview ?: return
+        val att = pendingAttachment
+        if (att == null) {
+            tv.visibility = View.GONE
+            tv.text = ""
+        } else {
+            tv.visibility = View.VISIBLE
+            val kind = if (att.isImage) "изображение" else "файл"
+            tv.text = "📎 $kind: ${att.name}  (нажмите, чтобы убрать)"
+        }
+    }
+
+    private fun submit() {
+        val t = input.text.toString().trim()
+        val att = pendingAttachment
+        if (t.isEmpty() && att == null) return
+        val text = t.ifBlank {
+            if (att?.isImage == true) "Что на изображении?" else "Проанализируй файл."
+        }
+        send(text, att)
+    }
+
+    private fun send(text: String, attachment: PendingAttachment?) {
+        input.setText("")
+        val label = attachment?.name
+        pendingAttachment = null
+        updateAttachPreview()
+
+        val userMsg = Msg(true, text, attachmentLabel = label)
+        msgs.add(userMsg)
+        list.visibility = View.VISIBLE
+        adapter.notifyItemInserted(msgs.lastIndex)
+
+        val pending = Msg(false, "…")
+        msgs.add(pending)
+        adapter.notifyItemInserted(msgs.lastIndex)
+        list.scrollToPosition(msgs.lastIndex)
+        val pendingIndex = msgs.lastIndex
+        val convId = conversationId
+
+        thread {
+            if (convId > 0) {
+                store.addMessage(
+                    StoredMessage(
+                        conversationId = convId,
+                        isUser = true,
+                        text = text,
+                        attachmentUri = attachment?.uri?.toString(),
+                        attachmentMime = attachment?.mime,
+                        attachmentName = label
+                    )
+                )
+                pending.dbId = store.addMessage(
+                    StoredMessage(conversationId = convId, isUser = false, text = "…")
+                )
+            }
+            val reply = try {
+                client.ask(text, attachment)
+            } catch (e: Exception) {
+                "Ошибка: ${e.message}"
+            }
+            if (pending.dbId > 0) store.updateMessageText(pending.dbId, reply)
+            runOnUiThread {
+                pending.text = reply
+                adapter.notifyItemChanged(pendingIndex)
+                list.scrollToPosition(msgs.lastIndex)
+                focusInputAndShowKeyboard()
+            }
+        }
+    }
+
+    companion object {
+        const val EXTRA_FROM_HOTWORD = "from_hotword"
+        const val EXTRA_START_VOICE = "start_voice"
+    }
+}
