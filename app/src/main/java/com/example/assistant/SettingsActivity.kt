@@ -12,7 +12,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
-import com.example.assistant.hotword.HotwordService
+
 
 class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,27 +23,17 @@ class SettingsActivity : AppCompatActivity() {
         val swSpeak = findViewById<SwitchCompat>(R.id.switchSpeak)
         val swMulti = findViewById<SwitchCompat>(R.id.switchMultimodal)
         val visionModel = findViewById<EditText>(R.id.visionModel)
-        val swHotword = findViewById<SwitchCompat>(R.id.switchHotword)
-        val hotwordPhrase = findViewById<EditText>(R.id.hotwordPhrase)
 
         key.setText(Prefs.apiKey(this))
         swSpeak.isChecked = Prefs.speak(this)
         swMulti.isChecked = Prefs.multimodal(this)
         visionModel.setText(Prefs.visionModel(this))
-        swHotword.isChecked = Prefs.hotwordEnabled(this)
-        hotwordPhrase.setText(Prefs.hotwordPhrase(this))
 
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             Prefs.setApiKey(this, key.text.toString().trim())
             Prefs.setSpeak(this, swSpeak.isChecked)
             Prefs.setMultimodal(this, swMulti.isChecked)
             Prefs.setVisionModel(this, visionModel.text.toString().trim())
-            Prefs.setHotwordPhrase(this, hotwordPhrase.text.toString().trim())
-            Prefs.setHotwordEnabled(this, swHotword.isChecked)
-            HotwordService.syncWithPrefs(this)
-            if (swHotword.isChecked) {
-                promptHotwordExtras()
-            }
             Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show()
             finish()
         }
@@ -94,16 +84,6 @@ class SettingsActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this, "Нужно Android 14+", Toast.LENGTH_SHORT).show()
             }
-        }
-    }
-
-    private fun promptHotwordExtras() {
-        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(
-                this,
-                "Разрешите показ поверх других приложений — иначе «Джарвис» не откроет шторку с рабочего стола",
-                Toast.LENGTH_LONG
-            ).show()
         }
     }
 

@@ -25,11 +25,5 @@ object Prefs {
     fun setVisionModel(c: Context, v: String) =
         sp(c).edit().putString("vision_model", v.ifBlank { "deepseek-chat" }).apply()
 
-    fun hotwordEnabled(c: Context): Boolean = sp(c).getBoolean("hotword", false)
-    fun setHotwordEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("hotword", v).apply()
 
-    fun hotwordPhrase(c: Context): String =
-        sp(c).getString("hotword_phrase", "джарвис") ?: "джарвис"
-    fun setHotwordPhrase(c: Context, v: String) =
-        sp(c).edit().putString("hotword_phrase", v.ifBlank { "джарвис" }).apply()
 }

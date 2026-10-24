@@ -12,8 +12,18 @@
         android:layout_width="36dp"
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="8dp"
-        android:background="#33000000" />
+        android:layout_marginBottom="6dp"
+        android:background="@color/ptako_stroke" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingBottom="6dp"
+        android:text="@string/app_name"
+        android:textColor="@color/ptako_text"
+        android:textSize="15sp"
+        android:textStyle="bold" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list"
@@ -29,7 +39,7 @@
         android:layout_height="wrap_content"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
-        android:textColor="#5C6BC0"
+        android:textColor="@color/ptako_blue_soft"
         android:visibility="gone" />
 
     <LinearLayout
@@ -37,15 +47,18 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="4dp"
-        android:paddingEnd="4dp"
-        android:paddingBottom="8dp">
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="10dp">
 
         <Button
             android:id="@+id/btnAttach"
             style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:contentDescription="Вложение"
+            android:minWidth="0dp"
+            android:padding="0dp"
             android:text="📎"
             android:textSize="18sp" />
 
@@ -53,19 +66,43 @@
             android:id="@+id/input"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:hint="Спросите помощника…"
+            android:background="@drawable/bg_input"
+            android:hint="@string/hint_write"
             android:imeOptions="actionSend"
             android:importantForAutofill="no"
             android:inputType="textMultiLine|textCapSentences"
-            android:maxLines="4" />
+            android:maxLines="4"
+            android:paddingStart="14dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="10dp"
+            android:textColor="@color/ptako_text"
+            android:textColorHint="@color/ptako_text_muted" />
+
+        <Button
+            android:id="@+id/btnMic"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/hold_to_talk"
+            android:minWidth="0dp"
+            android:padding="0dp"
+            android:text="🎤"
+            android:textSize="18sp" />
 
         <Button
             android:id="@+id/btnSend"
             style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:contentDescription="Отправить"
+            android:minWidth="0dp"
+            android:padding="0dp"
             android:text="➤"
+            android:textColor="@color/ptako_blue_soft"
             android:textSize="22sp" />
     </LinearLayout>
 </LinearLayout>

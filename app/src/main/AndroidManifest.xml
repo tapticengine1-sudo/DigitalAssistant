@@ -90,19 +90,6 @@
             android:exported="true"
             android:permission="android.permission.BIND_RECOGNITION_SERVICE" />
 
-        <service
-            android:name=".hotword.HotwordService"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
-
-        <receiver
-            android:name=".hotword.BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
+        
     </application>
 </manifest>

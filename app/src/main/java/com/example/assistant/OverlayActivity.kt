@@ -19,7 +19,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.assistant.hotword.HotwordService
+
 import kotlin.concurrent.thread
 
 /**
@@ -32,11 +32,13 @@ class OverlayActivity : AppCompatActivity() {
     private lateinit var adapter: ChatAdapter
     private lateinit var list: RecyclerView
     private lateinit var input: EditText
+    private lateinit var micBtn: Button
     private var attachPreview: TextView? = null
     private lateinit var client: DeepSeekClient
     private lateinit var store: ChatStore
     private var conversationId: Long = -1L
     private var pendingAttachment: PendingAttachment? = null
+    private var holdToTalk: HoldToTalk? = null
 
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@registerForActivityResult
@@ -63,10 +65,24 @@ class OverlayActivity : AppCompatActivity() {
         client = DeepSeekClient(this)
         list = findViewById(R.id.list)
         input = findViewById(R.id.input)
+        micBtn = findViewById(R.id.btnMic)
         attachPreview = findViewById(R.id.attachPreview)
         adapter = ChatAdapter(msgs)
         list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         list.adapter = adapter
+
+        holdToTalk = HoldToTalk(
+            activity = this,
+            button = micBtn,
+            onListening = { listening ->
+                micBtn.alpha = if (listening) 0.5f else 1f
+            },
+            onTranscript = { text ->
+                input.setText(text)
+                submit()
+            }
+        )
+        holdToTalk?.attach()
 
         thread {
             val id = try {
@@ -97,14 +113,9 @@ class OverlayActivity : AppCompatActivity() {
         input.post { focusInputAndShowKeyboard() }
     }
 
-    override fun onStart() {
-        super.onStart()
-        HotwordService.pause(this)
-    }
-
-    override fun onStop() {
-        HotwordService.resume(this)
-        super.onStop()
+    override fun onDestroy() {
+        holdToTalk?.destroy()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
