@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -16,7 +17,7 @@ class Msg(
 )
 
 class ChatAdapter(private val items: List<Msg>) : RecyclerView.Adapter<ChatAdapter.VH>() {
-    class VH(val row: LinearLayout, val tv: TextView, val attach: TextView) : RecyclerView.ViewHolder(row)
+    class VH(val row: LinearLayout, val tv: TextView, val attachIcon: ImageView) : RecyclerView.ViewHolder(row)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val ctx = parent.context
@@ -33,15 +34,16 @@ class ChatAdapter(private val items: List<Msg>) : RecyclerView.Adapter<ChatAdapt
             maxWidth = (ctx.resources.displayMetrics.widthPixels * 0.82).toInt()
             setTextIsSelectable(true)
         }
-        val attach = TextView(ctx).apply {
-            textSize = 13f
-            setPadding((14 * d).toInt(), 0, (14 * d).toInt(), (8 * d).toInt())
-            maxWidth = (ctx.resources.displayMetrics.widthPixels * 0.82).toInt()
+        val attachIcon = ImageView(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams((24 * d).toInt(), (24 * d).toInt()).apply {
+                setMargins((8 * d).toInt(), (4 * d).toInt(), (8 * d).toInt(), 0)
+            }
+            scaleType = ImageView.ScaleType.CENTER_CROP
             visibility = android.view.View.GONE
         }
+        row.addView(attachIcon)
         row.addView(tv)
-        row.addView(attach)
-        return VH(row, tv, attach)
+        return VH(row, tv, attachIcon)
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
@@ -57,11 +59,18 @@ class ChatAdapter(private val items: List<Msg>) : RecyclerView.Adapter<ChatAdapt
 
         val label = m.attachmentLabel
         if (!label.isNullOrBlank()) {
-            holder.attach.visibility = android.view.View.VISIBLE
-            holder.attach.text = "📎 $label"
-            holder.attach.setTextColor(if (m.user) 0xCCFFFFFF.toInt() else 0xFF5C6BC0.toInt())
+            holder.attachIcon.visibility = android.view.View.VISIBLE
+            // Простая иконка - цветной квадратик с первой буквой типа файла
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 8f
+                setColor(if (m.user) 0x80FFFFFF.toInt() else 0xFF90CAF9.toInt())
+            }
+            holder.attachIcon.background = bg
+            holder.attachIcon.setImageResource(android.R.drawable.ic_menu_gallery)
+            holder.attachIcon.alpha = 0.7f
         } else {
-            holder.attach.visibility = android.view.View.GONE
+            holder.attachIcon.visibility = android.view.View.GONE
         }
     }
 

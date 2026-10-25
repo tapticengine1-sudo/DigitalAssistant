@@ -20,6 +20,7 @@ class HoldToTalk(
     private val activity: Activity,
     private val button: View,
     private val onListening: (Boolean) -> Unit,
+    private val onPartialText: (String) -> Unit = {},
     private val onTranscript: (String) -> Unit
 ) {
     private var recognizer: SpeechRecognizer? = null
@@ -163,12 +164,18 @@ class HoldToTalk(
 
         override fun onPartialResults(p: Bundle?) {
             val t = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!t.isNullOrBlank()) lastPartial = t
+            if (!t.isNullOrBlank()) {
+                lastPartial = t
+                activity.runOnUiThread { onPartialText(t) }
+            }
         }
 
         override fun onResults(r: Bundle?) {
             val t = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!t.isNullOrBlank()) lastPartial = t
+            if (!t.isNullOrBlank()) {
+                lastPartial = t
+                activity.runOnUiThread { onPartialText(t) }
+            }
             if (holding) {
                 destroyRecognizer()
                 startListening()

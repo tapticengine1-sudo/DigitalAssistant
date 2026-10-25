@@ -160,11 +160,9 @@ class ChatStore private constructor(ctx: Context) :
             )
             if (msg.isUser) {
                 val conv = getConversationUnlocked(msg.conversationId)
-                if (conv != null && (conv.title == "Новый диалог" || conv.title.isBlank())) {
-                    renameUnlocked(
-                        msg.conversationId,
-                        msg.text.trim().take(60).ifBlank { "Диалог" }
-                    )
+                if (conv != null && (conv.title == "Новый диалог" || conv.title == "Оверлей" || conv.title.isBlank())) {
+                    val smartTitle = generateSmartTitle(msg.text)
+                    renameUnlocked(msg.conversationId, smartTitle)
                 }
             }
             id
@@ -238,6 +236,18 @@ class ChatStore private constructor(ctx: Context) :
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun generateSmartTitle(text: String): String {
+        val clean = text.trim()
+            .replace("\n", " ")
+            .replace(Regex("\\s+"), " ")
+        if (clean.isBlank()) return "Диалог"
+        
+        // Берём первые 2-3 значимых слова
+        val words = clean.split(" ").filter { it.length > 2 }
+        val title = words.take(3).joinToString(" ")
+        return if (title.isNotBlank()) title.take(40) else clean.take(40)
     }
 
     private fun renameUnlocked(id: Long, title: String) {

@@ -38,6 +38,35 @@ class MainActivity : AppCompatActivity() {
     private var conversationId: Long = -1L
     private var pendingAttachment: PendingAttachment? = null
 
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val photoPath = result.data?.getStringExtra("photo_path") ?: return@registerForActivityResult
+        val file = java.io.File(photoPath)
+        if (file.exists()) {
+            val uri = Uri.fromFile(file)
+            val att = AttachmentReader.fromUri(this, uri)
+            if (att != null) {
+                pendingAttachment = att
+                updateAttachPreview()
+            }
+        }
+    }
+
+    private val galleryLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val uriStr = result.data?.getStringExtra("photo_uri") ?: return@registerForActivityResult
+        val uri = Uri.parse(uriStr)
+        val att = AttachmentReader.fromUri(this, uri)
+        if (att != null) {
+            pendingAttachment = att
+            updateAttachPreview()
+        }
+    }
+
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@registerForActivityResult
         try {
@@ -97,17 +126,25 @@ class MainActivity : AppCompatActivity() {
             activity = this,
             button = micBtn,
             onListening = { listening ->
-                micBtn.alpha = if (listening) 0.5f else 1f
+                runOnUiThread {
+                    micBtn.alpha = if (listening) 0.5f else 1f
+                    if (!listening) input.setText("")
+                }
+            },
+            onPartialText = { text ->
+                runOnUiThread { input.setText(text) }
             },
             onTranscript = { text ->
-                input.setText(text)
-                submitInput(fromVoice = true)
+                runOnUiThread {
+                    input.setText(text)
+                    submitInput(fromVoice = true)
+                }
             }
         )
         holdToTalk?.attach()
 
         findViewById<Button>(R.id.btnAttach).setOnClickListener {
-            pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "application/json", "*/*"))
+            showAttachmentMenu()
         }
         attachPreview?.setOnClickListener {
             pendingAttachment = null
@@ -320,6 +357,20 @@ class MainActivity : AppCompatActivity() {
         holdToTalk?.destroy()
         tts?.shutdown()
         super.onDestroy()
+    }
+
+    private fun showAttachmentMenu() {
+        val options = arrayOf("📷 Камера", "🖼️ Галерея", "📎 Файл")
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Прикрепить")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> cameraLauncher.launch(Intent(this, CameraActivity::class.java))
+                    1 -> galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
+                    2 -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
+                }
+            }
+            .show()
     }
 
     companion object {

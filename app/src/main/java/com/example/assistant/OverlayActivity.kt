@@ -1,8 +1,14 @@
 package com.example.assistant
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
@@ -40,6 +46,35 @@ class OverlayActivity : AppCompatActivity() {
     private var pendingAttachment: PendingAttachment? = null
     private var holdToTalk: HoldToTalk? = null
 
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val photoPath = result.data?.getStringExtra("photo_path") ?: return@registerForActivityResult
+        val file = java.io.File(photoPath)
+        if (file.exists()) {
+            val uri = Uri.fromFile(file)
+            val att = AttachmentReader.fromUri(this, uri)
+            if (att != null) {
+                pendingAttachment = att
+                updateAttachPreview()
+            }
+        }
+    }
+
+    private val galleryLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val uriStr = result.data?.getStringExtra("photo_uri") ?: return@registerForActivityResult
+        val uri = Uri.parse(uriStr)
+        val att = AttachmentReader.fromUri(this, uri)
+        if (att != null) {
+            pendingAttachment = att
+            updateAttachPreview()
+        }
+    }
+
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@registerForActivityResult
         try {
@@ -75,11 +110,19 @@ class OverlayActivity : AppCompatActivity() {
             activity = this,
             button = micBtn,
             onListening = { listening ->
-                micBtn.alpha = if (listening) 0.5f else 1f
+                runOnUiThread {
+                    micBtn.alpha = if (listening) 0.5f else 1f
+                    if (!listening) input.setText("")
+                }
+            },
+            onPartialText = { text ->
+                runOnUiThread { input.setText(text) }
             },
             onTranscript = { text ->
-                input.setText(text)
-                submit()
+                runOnUiThread {
+                    input.setText(text)
+                    submit()
+                }
             }
         )
         holdToTalk?.attach()
@@ -94,7 +137,7 @@ class OverlayActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnAttach).setOnClickListener {
-            pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
+            showAttachmentMenu()
         }
         attachPreview?.setOnClickListener {
             pendingAttachment = null
@@ -263,6 +306,34 @@ class OverlayActivity : AppCompatActivity() {
                 focusInputAndShowKeyboard()
             }
         }
+    }
+
+    private fun showAttachmentMenu() {
+        val options = arrayOf("📷 Камера", "🖼️ Галерея", "📎 Файл")
+        AlertDialog.Builder(this)
+            .setTitle("Прикрепить")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> openCamera()
+                    1 -> openGallery()
+                    2 -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
+                }
+            }
+            .show()
+    }
+
+    private fun openCamera() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), 100)
+            return
+        }
+        cameraLauncher.launch(Intent(this, CameraActivity::class.java))
+    }
+
+    private fun openGallery() {
+        galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
     }
 
     companion object {
