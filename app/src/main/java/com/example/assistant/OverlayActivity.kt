@@ -19,6 +19,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -58,7 +59,11 @@ class OverlayActivity : AppCompatActivity() {
             if (att != null) {
                 pendingAttachment = att
                 updateAttachPreview()
+            } else {
+                Toast.makeText(this, "Не удалось обработать фото с камеры", Toast.LENGTH_SHORT).show()
             }
+        } else {
+            Toast.makeText(this, "Файл фото не найден: $photoPath", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -270,28 +275,37 @@ class OverlayActivity : AppCompatActivity() {
     }
 
     private fun updateVoiceUI(listening: Boolean) {
-        isVoiceInput = listening
-        if (listening) {
-            micBtn.text = "⏸"
-            sendBtn.text = "➤"
-            sendBtn.visibility = View.VISIBLE
-            waveformView.visibility = View.VISIBLE
-        } else {
-            micBtn.text = "🎤"
-            sendBtn.text = "➤"
-            waveformView.visibility = View.GONE
-            waveformView.reset()
+        runOnUiThread {
+            isVoiceInput = listening
+            if (listening) {
+                micBtn.text = "⏸"
+                micBtn.alpha = 1.0f
+                micBtn.isEnabled = true
+                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_orange))
+                sendBtn.text = "➤"
+                sendBtn.visibility = View.VISIBLE
+                waveformView.visibility = View.VISIBLE
+            } else {
+                micBtn.text = "🎤"
+                micBtn.alpha = 1.0f
+                micBtn.isEnabled = true
+                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_blue))
+                sendBtn.text = "➤"
+                waveformView.visibility = View.GONE
+                waveformView.reset()
+            }
         }
     }
     
     private fun recreateHoldToTalk() {
+        // Сначала уничтожаем старый экземпляр
+        holdToTalk?.destroy()
+        
         holdToTalk = HoldToTalk(
             activity = this,
             button = micBtn,
             onListening = { listening ->
-                runOnUiThread {
-                    updateVoiceUI(listening)
-                }
+                updateVoiceUI(listening)
             },
             onPartialText = { text ->
                 runOnUiThread { input.setText(text) }
@@ -400,6 +414,28 @@ class OverlayActivity : AppCompatActivity() {
         sheet.show(supportFragmentManager, "attachment_menu")
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1001) {
+            val audioPermGranted = grantResults.isNotEmpty() && 
+                permissions.indices.any { 
+                    permissions[it] == Manifest.permission.RECORD_AUDIO && 
+                    grantResults[it] == PackageManager.PERMISSION_GRANTED 
+                }
+            if (audioPermGranted) {
+                Toast.makeText(this, "Разрешение на микрофон получено", Toast.LENGTH_SHORT).show()
+                // Пробуем запустить снова
+                holdToTalk?.startListeningAuto()
+            } else {
+                Toast.makeText(this, "Без доступа к микрофону голосовой ввод не работает", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
     companion object {
         const val EXTRA_FROM_HOTWORD = "from_hotword"
         const val EXTRA_START_VOICE = "start_voice"

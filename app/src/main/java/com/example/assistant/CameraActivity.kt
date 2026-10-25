@@ -177,7 +177,7 @@ class CameraActivity : AppCompatActivity() {
     private fun confirmPhoto() {
         val file = capturedFile
         if (file != null && file.exists()) {
-            // Сохраняем повернутое изображение с правильной ориентацией
+            // Сохраняем повернутое изображение с правильной ориентацией в правильную директорию
             val correctedFile = saveCorrectedImage(file)
             setResult(RESULT_OK, intent.apply {
                 putExtra("photo_path", correctedFile.absolutePath)
@@ -194,20 +194,40 @@ class CameraActivity : AppCompatActivity() {
         
         try {
             val bitmap = loadAndRotateBitmap(originalFile)
-            correctedFile.outputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            
+            // Сжимаем изображение для экономии памяти и более быстрой передачи
+            val maxSide = 2048
+            val scaledBitmap = if (bitmap.width > maxSide || bitmap.height > maxSide) {
+                val scale = maxSide.toFloat() / maxOf(bitmap.width, bitmap.height)
+                val newWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
+                val newHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
+                val scaled = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+                if (scaled !== bitmap) bitmap.recycle()
+                scaled
+            } else {
+                bitmap
             }
-            bitmap.recycle()
+            
+            // Сохраняем с качеством 90% для баланса размера и качества
+            correctedFile.outputStream().use { out ->
+                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            }
+            scaledBitmap.recycle()
             
             // Устанавливаем EXIF с нормальной ориентацией
-            val exif = ExifInterface(correctedFile.absolutePath)
-            exif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
-            exif.saveAttributes()
+            try {
+                val exif = ExifInterface(correctedFile.absolutePath)
+                exif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+                exif.saveAttributes()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to set EXIF orientation", e)
+            }
             
             originalFile.delete()
             return correctedFile
         } catch (e: Exception) {
             Log.e(TAG, "Error saving corrected image", e)
+            Toast.makeText(this, "Ошибка сохранения фото: ${e.message}", Toast.LENGTH_SHORT).show()
             return originalFile
         }
     }

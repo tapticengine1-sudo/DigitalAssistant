@@ -53,7 +53,11 @@ class MainActivity : AppCompatActivity() {
             if (att != null) {
                 pendingAttachment = att
                 updateAttachPreview()
+            } else {
+                Toast.makeText(this, "Не удалось обработать фото с камеры", Toast.LENGTH_SHORT).show()
             }
+        } else {
+            Toast.makeText(this, "Файл фото не найден: $photoPath", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -223,7 +227,27 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.READ_CONTACTS
         )
         if (Build.VERSION.SDK_INT >= 33) perms += Manifest.permission.POST_NOTIFICATIONS
-        requestPermissions(perms.toTypedArray(), 1)
+        requestPermissions(perms.toTypedArray(), REQUEST_CODE_PERMISSIONS)
+    }
+    
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_PERMISSIONS || requestCode == 1001) {
+            val audioPermGranted = grantResults.isNotEmpty() && 
+                permissions.indices.any { 
+                    permissions[it] == Manifest.permission.RECORD_AUDIO && 
+                    grantResults[it] == PackageManager.PERMISSION_GRANTED 
+                }
+            if (audioPermGranted) {
+                Toast.makeText(this, "Разрешение на микрофон получено", Toast.LENGTH_SHORT).show()
+            } else if (permissions.contains(Manifest.permission.RECORD_AUDIO)) {
+                Toast.makeText(this, "Без доступа к микрофону голосовой ввод не работает", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
 
@@ -284,28 +308,37 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVoiceUI(listening: Boolean) {
-        isVoiceInput = listening
-        if (listening) {
-            micBtn.text = "⏸"
-            sendBtn.text = "➤"
-            sendBtn.visibility = View.VISIBLE
-            waveformView.visibility = View.VISIBLE
-        } else {
-            micBtn.text = "🎤"
-            sendBtn.text = "➤"
-            waveformView.visibility = View.GONE
-            waveformView.reset()
+        runOnUiThread {
+            isVoiceInput = listening
+            if (listening) {
+                micBtn.text = "⏸"
+                micBtn.alpha = 1.0f
+                micBtn.isEnabled = true
+                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_orange))
+                sendBtn.text = "➤"
+                sendBtn.visibility = View.VISIBLE
+                waveformView.visibility = View.VISIBLE
+            } else {
+                micBtn.text = "🎤"
+                micBtn.alpha = 1.0f
+                micBtn.isEnabled = true
+                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_blue))
+                sendBtn.text = "➤"
+                waveformView.visibility = View.GONE
+                waveformView.reset()
+            }
         }
     }
     
     private fun recreateHoldToTalk() {
+        // Сначала уничтожаем старый экземпляр
+        holdToTalk?.destroy()
+        
         holdToTalk = HoldToTalk(
             activity = this,
             button = micBtn,
             onListening = { listening ->
-                runOnUiThread {
-                    updateVoiceUI(listening)
-                }
+                updateVoiceUI(listening)
             },
             onPartialText = { text ->
                 runOnUiThread { input.setText(text) }
@@ -443,5 +476,6 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_OVERLAY = "overlay"
         const val EXTRA_CONVERSATION_ID = "conversation_id"
         const val EXTRA_NEW_CHAT = "new_chat"
+        private const val REQUEST_CODE_PERMISSIONS = 1000
     }
 }

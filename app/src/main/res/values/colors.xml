@@ -11,4 +11,6 @@
     <color name="ptako_text_muted">#FF9AA8C2</color>
     <color name="ptako_bubble_user">#FF1565C0</color>
     <color name="ptako_bubble_ai">#FF1C2A40</color>
+    <color name="ptako_orange">#FFFF6B35</color>
+    <color name="ptako_green">#FF4CAF50</color>
 </resources>

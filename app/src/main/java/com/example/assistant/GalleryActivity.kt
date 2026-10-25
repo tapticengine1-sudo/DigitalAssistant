@@ -143,43 +143,78 @@ class GalleryActivity : AppCompatActivity() {
 
     private fun loadImagesAsync() {
         thread {
-            val projection = arrayOf(
-                MediaStore.Images.Media._ID,
-                MediaStore.Images.Media.DATA,
-                MediaStore.Images.Media.DATE_ADDED
-            )
+            try {
+                val projection = arrayOf(
+                    MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.DATA,
+                    MediaStore.Images.Media.DATE_ADDED
+                )
 
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-            val limit = 500 // Ограничиваем количество для быстрой загрузки
+                val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                val limit = 500 // Ограничиваем количество для быстрой загрузки
 
-            val cursor: Cursor? = contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                null,
-                null,
-                "$sortOrder LIMIT $limit"
-            )
-
-            val temp = mutableListOf<GalleryImage>()
-            cursor?.use {
-                val idColumn = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-                val dataColumn = it.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
-
-                while (it.moveToNext()) {
-                    val id = it.getLong(idColumn)
-                    val path = it.getString(dataColumn)
-                    val uri = Uri.withAppendedPath(
+                val cursor: Cursor? = try {
+                    contentResolver.query(
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        id.toString()
+                        projection,
+                        null,
+                        null,
+                        "$sortOrder LIMIT $limit"
                     )
-                    temp.add(GalleryImage(uri, path))
+                } catch (e: Exception) {
+                    android.util.Log.e("GalleryActivity", "Query failed", e)
+                    runOnUiThread {
+                        Toast.makeText(this, "Ошибка загрузки галереи: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                    null
                 }
-            }
 
-            runOnUiThread {
-                images.clear()
-                images.addAll(temp)
-                adapter.notifyDataSetChanged()
+                if (cursor == null) {
+                    runOnUiThread {
+                        Toast.makeText(this, "Не удалось получить доступ к галерее", Toast.LENGTH_SHORT).show()
+                    }
+                    return@thread
+                }
+
+                val temp = mutableListOf<GalleryImage>()
+                cursor.use {
+                    try {
+                        val idColumn = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                        val dataColumn = it.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+
+                        while (it.moveToNext()) {
+                            try {
+                                val id = it.getLong(idColumn)
+                                val path = it.getString(dataColumn) ?: ""
+                                val uri = Uri.withAppendedPath(
+                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                    id.toString()
+                                )
+                                temp.add(GalleryImage(uri, path))
+                            } catch (e: Exception) {
+                                // Пропускаем проблемные изображения
+                                android.util.Log.w("GalleryActivity", "Skipping image", e)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("GalleryActivity", "Error reading cursor", e)
+                    }
+                }
+
+                runOnUiThread {
+                    if (temp.isEmpty()) {
+                        Toast.makeText(this, "Изображения не найдены", Toast.LENGTH_SHORT).show()
+                    }
+                    images.clear()
+                    images.addAll(temp)
+                    adapter.notifyDataSetChanged()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("GalleryActivity", "Fatal error in loadImagesAsync", e)
+                runOnUiThread {
+                    Toast.makeText(this, "Критическая ошибка загрузки галереи", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
             }
         }
     }

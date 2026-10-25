@@ -109,8 +109,10 @@ class DeepSeekClient(private val ctx: Context) {
         }
 
         if (attachment.isImage && Prefs.multimodal(ctx)) {
+            android.util.Log.d("DeepSeekClient", "Processing image attachment: ${attachment.name}, URI: ${attachment.uri}")
             val b64 = AttachmentReader.imageBase64Jpeg(ctx, attachment.uri)
-            if (b64 != null) {
+            if (b64 != null && b64.isNotEmpty()) {
+                android.util.Log.d("DeepSeekClient", "Successfully encoded image to base64, length: ${b64.length}")
                 val parts = JSONArray()
                     .put(
                         JSONObject().put("type", "text").put(
@@ -125,6 +127,8 @@ class DeepSeekClient(private val ctx: Context) {
                         )
                     )
                 return JSONObject().put("role", "user").put("content", parts)
+            } else {
+                android.util.Log.e("DeepSeekClient", "Failed to encode image to base64")
             }
         }
 
