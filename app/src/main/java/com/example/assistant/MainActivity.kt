@@ -29,17 +29,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: ChatAdapter
     private lateinit var list: RecyclerView
     private lateinit var input: EditText
-    private lateinit var micBtn: Button
     private lateinit var sendBtn: Button
-    private lateinit var waveformView: WaveformView
     private var attachPreview: TextView? = null
     private lateinit var client: DeepSeekClient
     private lateinit var store: ChatStore
     private var tts: TextToSpeech? = null
-    private var holdToTalk: HoldToTalk? = null
     private var conversationId: Long = -1L
     private var pendingAttachment: PendingAttachment? = null
-    private var isVoiceInput = false
 
     private val cameraLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -61,17 +57,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val galleryLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode != RESULT_OK) return@registerForActivityResult
-        val uriStr = result.data?.getStringExtra("photo_uri") ?: return@registerForActivityResult
-        val uri = Uri.parse(uriStr)
-        val att = AttachmentReader.fromUri(this, uri)
-        if (att != null) {
-            pendingAttachment = att
-            updateAttachPreview()
+    // Упрощенный системный выбор изображения через GetContent
+    private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: SecurityException) {
         }
+        val att = AttachmentReader.fromUri(this, uri)
+        if (att == null) {
+            Toast.makeText(this, "Не удалось открыть изображение", Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        pendingAttachment = att
+        updateAttachPreview()
     }
 
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -119,37 +118,29 @@ class MainActivity : AppCompatActivity() {
         client = DeepSeekClient(this)
         list = findViewById(R.id.list)
         input = findViewById(R.id.input)
-        micBtn = findViewById(R.id.btnMic)
         sendBtn = findViewById(R.id.btnSend)
-        waveformView = findViewById(R.id.waveform)
         attachPreview = findViewById(R.id.attachPreview)
+        
         adapter = ChatAdapter(msgs)
         list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         list.adapter = adapter
 
+        // Инициализация TTS с правильной обработкой
         tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) tts?.language = Locale("ru", "RU")
-        }
-
-        holdToTalk = HoldToTalk(
-            activity = this,
-            button = micBtn,
-            onListening = { listening ->
-                runOnUiThread {
-                    updateVoiceUI(listening)
+            if (status == TextToSpeech.SUCCESS) {
+                val result = tts?.setLanguage(Locale("ru", "RU"))
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    android.util.Log.e("MainActivity", "Russian TTS not supported")
+                    runOnUiThread {
+                        Toast.makeText(this, "Русский язык не поддерживается TTS", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    android.util.Log.d("MainActivity", "TTS initialized successfully")
                 }
-            },
-            onPartialText = { text ->
-                runOnUiThread { input.setText(text) }
-            },
-            onTranscript = { text ->
-                // Этот callback больше не используется для автоотправки
-            },
-            onRmsChanged = { rms ->
-                runOnUiThread { waveformView.setAmplitude(rms) }
+            } else {
+                android.util.Log.e("MainActivity", "TTS initialization failed")
             }
-        )
-        holdToTalk?.attach()
+        }
 
         findViewById<Button>(R.id.btnAttach).setOnClickListener {
             showAttachmentMenu()
@@ -159,24 +150,13 @@ class MainActivity : AppCompatActivity() {
             updateAttachPreview()
         }
         sendBtn.setOnClickListener { 
-            if (isVoiceInput) {
-                // Мгновенная отправка голосового ввода
-                val text = input.text.toString().trim()
-                isVoiceInput = false
-                holdToTalk?.destroy()
-                updateVoiceUI(false)
-                if (text.isNotEmpty()) {
-                    submitInput(fromVoice = true)
-                }
-                // Пересоздаем HoldToTalk после отправки
-                recreateHoldToTalk()
-            } else {
-                submitInput(fromVoice = false) 
-            }
+            submitInput()
         }
+        
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
-                submitInput(fromVoice = false); true
+                submitInput()
+                true
             } else false
         }
 
@@ -197,7 +177,7 @@ class MainActivity : AppCompatActivity() {
 
         val restoreId = intent.getLongExtra(EXTRA_CONVERSATION_ID, -1L)
         if (restoreId > 0) loadConversation(restoreId)
-        else startNewConversation(showGreeting = false)
+        else startNewConversation()
 
         requestAppPermissions()
     }
@@ -222,11 +202,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestAppPermissions() {
         val perms = mutableListOf(
-            Manifest.permission.RECORD_AUDIO,
             Manifest.permission.CALL_PHONE,
             Manifest.permission.READ_CONTACTS
         )
-        if (Build.VERSION.SDK_INT >= 33) perms += Manifest.permission.POST_NOTIFICATIONS
+        if (Build.VERSION.SDK_INT >= 33) {
+            perms += Manifest.permission.POST_NOTIFICATIONS
+            perms += Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            perms += Manifest.permission.READ_EXTERNAL_STORAGE
+        }
         requestPermissions(perms.toTypedArray(), REQUEST_CODE_PERMISSIONS)
     }
     
@@ -236,18 +220,7 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE_PERMISSIONS || requestCode == 1001) {
-            val audioPermGranted = grantResults.isNotEmpty() && 
-                permissions.indices.any { 
-                    permissions[it] == Manifest.permission.RECORD_AUDIO && 
-                    grantResults[it] == PackageManager.PERMISSION_GRANTED 
-                }
-            if (audioPermGranted) {
-                Toast.makeText(this, "Разрешение на микрофон получено", Toast.LENGTH_SHORT).show()
-            } else if (permissions.contains(Manifest.permission.RECORD_AUDIO)) {
-                Toast.makeText(this, "Без доступа к микрофону голосовой ввод не работает", Toast.LENGTH_LONG).show()
-            }
-        }
+        android.util.Log.d("MainActivity", "Permissions result received")
     }
 
 
@@ -265,17 +238,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startNewConversation(showGreeting: Boolean) {
+    private fun startNewConversation() {
         msgs.clear()
         adapter.notifyDataSetChanged()
         client.clearSessionHistory()
         pendingAttachment = null
         updateAttachPreview()
         conversationId = -1L
+        
         thread {
             val id = try {
                 store.createConversation().id
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to create conversation", e)
                 -1L
             }
             runOnUiThread {
@@ -286,106 +261,46 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadConversation(id: Long) {
         if (id <= 0) return
+        
         thread {
             val conv = store.getConversation(id)
             val stored = store.messagesFor(id)
+            
             runOnUiThread {
                 if (conv == null) {
                     Toast.makeText(this, "Диалог не найден", Toast.LENGTH_SHORT).show()
                     return@runOnUiThread
                 }
+                
                 conversationId = id
                 client.seedFromMessages(stored)
                 msgs.clear()
+                
                 for (m in stored) {
                     val uri = m.attachmentUri?.let { Uri.parse(it) }
                     msgs += Msg(m.isUser, m.text, m.attachmentName, uri, m.id)
                 }
+                
                 adapter.notifyDataSetChanged()
                 if (msgs.isNotEmpty()) list.scrollToPosition(msgs.size - 1)
             }
         }
     }
 
-    private fun updateVoiceUI(listening: Boolean) {
-        runOnUiThread {
-            isVoiceInput = listening
-            if (listening) {
-                micBtn.text = "⏸"
-                micBtn.alpha = 1.0f
-                micBtn.isEnabled = true
-                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_orange))
-                sendBtn.text = "➤"
-                sendBtn.visibility = View.VISIBLE
-                waveformView.visibility = View.VISIBLE
-            } else {
-                micBtn.text = "🎤"
-                micBtn.alpha = 1.0f
-                micBtn.isEnabled = true
-                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_blue))
-                sendBtn.text = "➤"
-                waveformView.visibility = View.GONE
-                waveformView.reset()
-            }
-        }
-    }
-    
-    private fun recreateHoldToTalk() {
-        // Сначала уничтожаем старый экземпляр
-        holdToTalk?.destroy()
-        
-        holdToTalk = HoldToTalk(
-            activity = this,
-            button = micBtn,
-            onListening = { listening ->
-                updateVoiceUI(listening)
-            },
-            onPartialText = { text ->
-                runOnUiThread { input.setText(text) }
-            },
-            onTranscript = { text ->
-                // Не используется
-            },
-            onRmsChanged = { rms ->
-                runOnUiThread { waveformView.setAmplitude(rms) }
-            }
-        )
-        holdToTalk?.attach()
-    }
-
-    private fun submitInput(fromVoice: Boolean) {
+    private fun submitInput() {
         val t = input.text.toString().trim()
         val att = pendingAttachment
+        
         if (t.isEmpty() && att == null) return
+        
         val text = t.ifBlank {
             if (att?.isImage == true) "Что на изображении?" else "Проанализируй файл."
         }
-        send(text, att, fromVoice)
+        
+        send(text, att)
     }
 
-    private fun addUiAndPersist(m: Msg, attachment: PendingAttachment?) {
-        msgs.add(m)
-        adapter.notifyItemInserted(msgs.size - 1)
-        list.scrollToPosition(msgs.size - 1)
-        val convId = conversationId
-        if (convId > 0) {
-            thread {
-                val id = store.addMessage(
-                    StoredMessage(
-                        conversationId = convId,
-                        isUser = m.user,
-                        text = m.text,
-                        attachmentUri = attachment?.uri?.toString(),
-                        attachmentMime = attachment?.mime,
-                        attachmentName = attachment?.name ?: m.attachmentLabel
-                    )
-                )
-                runOnUiThread { m.dbId = id }
-            }
-        }
-    }
-
-    private fun send(text: String, attachment: PendingAttachment?, fromVoice: Boolean = false) {
+    private fun send(text: String, attachment: PendingAttachment?) {
         input.setText("")
         val attachLabel = attachment?.name
         pendingAttachment = null
@@ -421,24 +336,60 @@ class MainActivity : AppCompatActivity() {
             val reply = try {
                 client.ask(text, attachment)
             } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Error getting response", e)
                 "Ошибка: ${e.message}"
             }
+            
             if (pending.dbId > 0) store.updateMessageText(pending.dbId, reply)
+            
             runOnUiThread {
                 pending.text = reply
                 adapter.notifyItemChanged(pendingIndex)
                 list.scrollToPosition(msgs.size - 1)
 
-                // Умная озвучка: голос → текст+TTS, текст → только текст
-                // Проверка режима "Не беспокоить"
-                if (fromVoice && Prefs.speak(this) && !isDoNotDisturbActive()) {
-                    tts?.speak(
-                        reply.replace("*", "").replace("#", ""),
-                        TextToSpeech.QUEUE_FLUSH,
-                        null,
-                        "reply"
-                    )
-                }
+                // Озвучиваем ответ, если TTS включен в настройках
+                speakResponseIfAllowed(reply)
+            }
+        }
+    }
+
+    private fun speakResponseIfAllowed(text: String) {
+        if (!Prefs.speak(this)) {
+            android.util.Log.d("MainActivity", "TTS disabled in settings")
+            return
+        }
+        
+        if (isDoNotDisturbActive()) {
+            android.util.Log.d("MainActivity", "Do Not Disturb active, skipping TTS")
+            return
+        }
+        
+        val ttsInstance = tts
+        if (ttsInstance == null) {
+            android.util.Log.w("MainActivity", "TTS not initialized")
+            return
+        }
+        
+        // Очищаем markdown и специальные символы
+        val cleanText = text
+            .replace("*", "")
+            .replace("#", "")
+            .replace("_", "")
+            .replace("`", "")
+            .trim()
+        
+        if (cleanText.isNotEmpty()) {
+            val result = ttsInstance.speak(
+                cleanText,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "reply_${System.currentTimeMillis()}"
+            )
+            
+            if (result == TextToSpeech.ERROR) {
+                android.util.Log.e("MainActivity", "TTS speak failed")
+            } else {
+                android.util.Log.d("MainActivity", "TTS speaking: ${cleanText.take(50)}...")
             }
         }
     }
@@ -446,17 +397,16 @@ class MainActivity : AppCompatActivity() {
     private fun isDoNotDisturbActive(): Boolean {
         return try {
             val audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
-            audioManager?.ringerMode == AudioManager.RINGER_MODE_SILENT ||
-                    audioManager?.ringerMode == AudioManager.RINGER_MODE_VIBRATE
+            val ringerMode = audioManager?.ringerMode
+            ringerMode == AudioManager.RINGER_MODE_SILENT || ringerMode == AudioManager.RINGER_MODE_VIBRATE
         } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Error checking DND status", e)
             false
         }
     }
 
-
-
     override fun onDestroy() {
-        holdToTalk?.destroy()
+        tts?.stop()
         tts?.shutdown()
         super.onDestroy()
     }
@@ -465,7 +415,7 @@ class MainActivity : AppCompatActivity() {
         val sheet = AttachmentBottomSheet { choice ->
             when (choice) {
                 AttachmentBottomSheet.Choice.CAMERA -> cameraLauncher.launch(Intent(this, CameraActivity::class.java))
-                AttachmentBottomSheet.Choice.GALLERY -> galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
+                AttachmentBottomSheet.Choice.GALLERY -> pickImage.launch("image/*")
                 AttachmentBottomSheet.Choice.FILE -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
             }
         }
@@ -477,5 +427,6 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_CONVERSATION_ID = "conversation_id"
         const val EXTRA_NEW_CHAT = "new_chat"
         private const val REQUEST_CODE_PERMISSIONS = 1000
+        private const val TAG = "MainActivity"
     }
 }

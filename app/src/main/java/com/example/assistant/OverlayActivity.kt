@@ -36,16 +36,12 @@ class OverlayActivity : AppCompatActivity() {
     private lateinit var adapter: ChatAdapter
     private lateinit var list: RecyclerView
     private lateinit var input: EditText
-    private lateinit var micBtn: Button
     private lateinit var sendBtn: Button
-    private lateinit var waveformView: WaveformView
     private var attachPreview: TextView? = null
     private lateinit var client: DeepSeekClient
     private lateinit var store: ChatStore
     private var conversationId: Long = -1L
     private var pendingAttachment: PendingAttachment? = null
-    private var holdToTalk: HoldToTalk? = null
-    private var isVoiceInput = false
 
     private val cameraLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -67,17 +63,20 @@ class OverlayActivity : AppCompatActivity() {
         }
     }
 
-    private val galleryLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode != RESULT_OK) return@registerForActivityResult
-        val uriStr = result.data?.getStringExtra("photo_uri") ?: return@registerForActivityResult
-        val uri = Uri.parse(uriStr)
-        val att = AttachmentReader.fromUri(this, uri)
-        if (att != null) {
-            pendingAttachment = att
-            updateAttachPreview()
+    // Упрощенный системный выбор изображения
+    private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: SecurityException) {
         }
+        val att = AttachmentReader.fromUri(this, uri)
+        if (att == null) {
+            Toast.makeText(this, "Не удалось открыть изображение", Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        pendingAttachment = att
+        updateAttachPreview()
     }
 
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -105,33 +104,12 @@ class OverlayActivity : AppCompatActivity() {
         client = DeepSeekClient(this)
         list = findViewById(R.id.list)
         input = findViewById(R.id.input)
-        micBtn = findViewById(R.id.btnMic)
         sendBtn = findViewById(R.id.btnSend)
-        waveformView = findViewById(R.id.waveform)
         attachPreview = findViewById(R.id.attachPreview)
+        
         adapter = ChatAdapter(msgs)
         list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         list.adapter = adapter
-
-        holdToTalk = HoldToTalk(
-            activity = this,
-            button = micBtn,
-            onListening = { listening ->
-                runOnUiThread {
-                    updateVoiceUI(listening)
-                }
-            },
-            onPartialText = { text ->
-                runOnUiThread { input.setText(text) }
-            },
-            onTranscript = { text ->
-                // Callback не используется для автоотправки
-            },
-            onRmsChanged = { rms ->
-                runOnUiThread { waveformView.setAmplitude(rms) }
-            }
-        )
-        holdToTalk?.attach()
 
         thread {
             val id = try {
@@ -150,39 +128,21 @@ class OverlayActivity : AppCompatActivity() {
             updateAttachPreview()
         }
         sendBtn.setOnClickListener { 
-            if (isVoiceInput) {
-                // Мгновенная отправка голосового ввода
-                val text = input.text.toString().trim()
-                isVoiceInput = false
-                holdToTalk?.destroy()
-                updateVoiceUI(false)
-                if (text.isNotEmpty()) {
-                    submitWithVoiceFlag(true)
-                }
-                // Пересоздаем HoldToTalk после отправки
-                recreateHoldToTalk()
-            } else {
-                submit() 
-            }
+            submit()
         }
+        
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
-                submit(); true
+                submit()
+                true
             } else false
         }
 
-        // Автоматический запуск микрофона при вызове оверлея
-        if (intent.getBooleanExtra(EXTRA_FROM_HOTWORD, false) || intent.getBooleanExtra(EXTRA_START_VOICE, false)) {
-            input.postDelayed({
-                holdToTalk?.startListeningAuto()
-            }, 300)
-        } else {
-            input.post { focusInputAndShowKeyboard() }
-        }
+        // Автоматический фокус на поле ввода
+        input.post { focusInputAndShowKeyboard() }
     }
 
     override fun onDestroy() {
-        holdToTalk?.destroy()
         super.onDestroy()
     }
 
@@ -274,63 +234,6 @@ class OverlayActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateVoiceUI(listening: Boolean) {
-        runOnUiThread {
-            isVoiceInput = listening
-            if (listening) {
-                micBtn.text = "⏸"
-                micBtn.alpha = 1.0f
-                micBtn.isEnabled = true
-                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_orange))
-                sendBtn.text = "➤"
-                sendBtn.visibility = View.VISIBLE
-                waveformView.visibility = View.VISIBLE
-            } else {
-                micBtn.text = "🎤"
-                micBtn.alpha = 1.0f
-                micBtn.isEnabled = true
-                micBtn.setBackgroundColor(ContextCompat.getColor(this, R.color.ptako_blue))
-                sendBtn.text = "➤"
-                waveformView.visibility = View.GONE
-                waveformView.reset()
-            }
-        }
-    }
-    
-    private fun recreateHoldToTalk() {
-        // Сначала уничтожаем старый экземпляр
-        holdToTalk?.destroy()
-        
-        holdToTalk = HoldToTalk(
-            activity = this,
-            button = micBtn,
-            onListening = { listening ->
-                updateVoiceUI(listening)
-            },
-            onPartialText = { text ->
-                runOnUiThread { input.setText(text) }
-            },
-            onTranscript = { text ->
-                // Не используется
-            },
-            onRmsChanged = { rms ->
-                runOnUiThread { waveformView.setAmplitude(rms) }
-            }
-        )
-        holdToTalk?.attach()
-    }
-    
-    private fun submitWithVoiceFlag(fromVoice: Boolean) {
-        val t = input.text.toString().trim()
-        val att = pendingAttachment
-        if (t.isEmpty() && att == null) return
-        val text = t.ifBlank {
-            if (att?.isImage == true) "Что на изображении?" else "Проанализируй файл."
-        }
-        send(text, att)
-        // В оверлее пока не озвучиваем, но флаг можно использовать позже
-    }
-
     private fun submit() {
         val t = input.text.toString().trim()
         val att = pendingAttachment
@@ -344,11 +247,8 @@ class OverlayActivity : AppCompatActivity() {
     private fun send(text: String, attachment: PendingAttachment?) {
         input.setText("")
         val label = attachment?.name
-        val wasVoice = isVoiceInput
-        isVoiceInput = false
         pendingAttachment = null
         updateAttachPreview()
-        updateVoiceUI(false)
 
         val userMsg = Msg(true, text, attachmentLabel = label, attachmentUri = attachment?.uri)
         msgs.add(userMsg)
@@ -407,33 +307,11 @@ class OverlayActivity : AppCompatActivity() {
         val sheet = AttachmentBottomSheet { choice ->
             when (choice) {
                 AttachmentBottomSheet.Choice.CAMERA -> cameraLauncher.launch(Intent(this, CameraActivity::class.java))
-                AttachmentBottomSheet.Choice.GALLERY -> galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
+                AttachmentBottomSheet.Choice.GALLERY -> pickImage.launch("image/*")
                 AttachmentBottomSheet.Choice.FILE -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
             }
         }
         sheet.show(supportFragmentManager, "attachment_menu")
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1001) {
-            val audioPermGranted = grantResults.isNotEmpty() && 
-                permissions.indices.any { 
-                    permissions[it] == Manifest.permission.RECORD_AUDIO && 
-                    grantResults[it] == PackageManager.PERMISSION_GRANTED 
-                }
-            if (audioPermGranted) {
-                Toast.makeText(this, "Разрешение на микрофон получено", Toast.LENGTH_SHORT).show()
-                // Пробуем запустить снова
-                holdToTalk?.startListeningAuto()
-            } else {
-                Toast.makeText(this, "Без доступа к микрофону голосовой ввод не работает", Toast.LENGTH_LONG).show()
-            }
-        }
     }
     
     companion object {
