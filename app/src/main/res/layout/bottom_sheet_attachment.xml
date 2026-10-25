@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_bottom_sheet"
+    android:orientation="vertical"
+    android:paddingTop="12dp"
+    android:paddingBottom="24dp">
+
+    <View
+        android:layout_width="36dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:background="@color/ptako_stroke" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp"
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:id="@+id/btnCamera"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="24dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Камера"
+            android:padding="12dp"
+            android:src="@android:drawable/ic_menu_camera"
+            android:tint="@color/ptako_blue" />
+
+        <ImageView
+            android:id="@+id/btnGallery"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="24dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Галерея"
+            android:padding="12dp"
+            android:src="@android:drawable/ic_menu_gallery"
+            android:tint="@color/ptako_blue" />
+
+        <ImageView
+            android:id="@+id/btnFile"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Файл"
+            android:padding="12dp"
+            android:src="@android:drawable/ic_menu_save"
+            android:tint="@color/ptako_blue" />
+    </LinearLayout>
+</LinearLayout>

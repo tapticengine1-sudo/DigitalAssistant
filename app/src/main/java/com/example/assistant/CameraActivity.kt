@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -130,8 +131,34 @@ class CameraActivity : AppCompatActivity() {
             retakeButton.visibility = View.VISIBLE
             confirmButton.visibility = View.VISIBLE
             
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+            val bitmap = loadAndRotateBitmap(file)
             previewImage.setImageBitmap(bitmap)
+        }
+    }
+    
+    private fun loadAndRotateBitmap(file: File): Bitmap {
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+        return try {
+            val exif = ExifInterface(file.absolutePath)
+            val orientation = exif.getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+            
+            val matrix = Matrix()
+            when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            }
+            
+            if (matrix.isIdentity) {
+                bitmap
+            } else {
+                Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            }
+        } catch (e: Exception) {
+            bitmap
         }
     }
     
@@ -150,11 +177,38 @@ class CameraActivity : AppCompatActivity() {
     private fun confirmPhoto() {
         val file = capturedFile
         if (file != null && file.exists()) {
-            // Передаём URI обратно в вызывающую активность
+            // Сохраняем повернутое изображение с правильной ориентацией
+            val correctedFile = saveCorrectedImage(file)
             setResult(RESULT_OK, intent.apply {
-                putExtra("photo_path", file.absolutePath)
+                putExtra("photo_path", correctedFile.absolutePath)
             })
             finish()
+        }
+    }
+    
+    private fun saveCorrectedImage(originalFile: File): File {
+        val correctedFile = File(
+            cacheDir,
+            "corrected_${System.currentTimeMillis()}.jpg"
+        )
+        
+        try {
+            val bitmap = loadAndRotateBitmap(originalFile)
+            correctedFile.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            }
+            bitmap.recycle()
+            
+            // Устанавливаем EXIF с нормальной ориентацией
+            val exif = ExifInterface(correctedFile.absolutePath)
+            exif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+            exif.saveAttributes()
+            
+            originalFile.delete()
+            return correctedFile
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving corrected image", e)
+            return originalFile
         }
     }
     

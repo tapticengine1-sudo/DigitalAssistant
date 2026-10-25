@@ -3,11 +3,11 @@ package com.example.assistant
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
-
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -30,6 +30,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var list: RecyclerView
     private lateinit var input: EditText
     private lateinit var micBtn: Button
+    private lateinit var sendBtn: Button
+    private lateinit var waveformView: WaveformView
     private var attachPreview: TextView? = null
     private lateinit var client: DeepSeekClient
     private lateinit var store: ChatStore
@@ -37,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     private var holdToTalk: HoldToTalk? = null
     private var conversationId: Long = -1L
     private var pendingAttachment: PendingAttachment? = null
+    private var isVoiceInput = false
 
     private val cameraLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -113,6 +116,8 @@ class MainActivity : AppCompatActivity() {
         list = findViewById(R.id.list)
         input = findViewById(R.id.input)
         micBtn = findViewById(R.id.btnMic)
+        sendBtn = findViewById(R.id.btnSend)
+        waveformView = findViewById(R.id.waveform)
         attachPreview = findViewById(R.id.attachPreview)
         adapter = ChatAdapter(msgs)
         list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
@@ -127,18 +132,17 @@ class MainActivity : AppCompatActivity() {
             button = micBtn,
             onListening = { listening ->
                 runOnUiThread {
-                    micBtn.alpha = if (listening) 0.5f else 1f
-                    if (!listening) input.setText("")
+                    updateVoiceUI(listening)
                 }
             },
             onPartialText = { text ->
                 runOnUiThread { input.setText(text) }
             },
             onTranscript = { text ->
-                runOnUiThread {
-                    input.setText(text)
-                    submitInput(fromVoice = true)
-                }
+                // Этот callback больше не используется для автоотправки
+            },
+            onRmsChanged = { rms ->
+                runOnUiThread { waveformView.setAmplitude(rms) }
             }
         )
         holdToTalk?.attach()
@@ -150,7 +154,22 @@ class MainActivity : AppCompatActivity() {
             pendingAttachment = null
             updateAttachPreview()
         }
-        findViewById<Button>(R.id.btnSend).setOnClickListener { submitInput(fromVoice = false) }
+        sendBtn.setOnClickListener { 
+            if (isVoiceInput) {
+                // Мгновенная отправка голосового ввода
+                val text = input.text.toString().trim()
+                isVoiceInput = false
+                holdToTalk?.destroy()
+                updateVoiceUI(false)
+                if (text.isNotEmpty()) {
+                    submitInput(fromVoice = true)
+                }
+                // Пересоздаем HoldToTalk после отправки
+                recreateHoldToTalk()
+            } else {
+                submitInput(fromVoice = false) 
+            }
+        }
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 submitInput(fromVoice = false); true
@@ -255,12 +274,50 @@ class MainActivity : AppCompatActivity() {
                 client.seedFromMessages(stored)
                 msgs.clear()
                 for (m in stored) {
-                    msgs += Msg(m.isUser, m.text, m.attachmentName, m.id)
+                    val uri = m.attachmentUri?.let { Uri.parse(it) }
+                    msgs += Msg(m.isUser, m.text, m.attachmentName, uri, m.id)
                 }
                 adapter.notifyDataSetChanged()
                 if (msgs.isNotEmpty()) list.scrollToPosition(msgs.size - 1)
             }
         }
+    }
+
+    private fun updateVoiceUI(listening: Boolean) {
+        isVoiceInput = listening
+        if (listening) {
+            micBtn.text = "⏸"
+            sendBtn.text = "➤"
+            sendBtn.visibility = View.VISIBLE
+            waveformView.visibility = View.VISIBLE
+        } else {
+            micBtn.text = "🎤"
+            sendBtn.text = "➤"
+            waveformView.visibility = View.GONE
+            waveformView.reset()
+        }
+    }
+    
+    private fun recreateHoldToTalk() {
+        holdToTalk = HoldToTalk(
+            activity = this,
+            button = micBtn,
+            onListening = { listening ->
+                runOnUiThread {
+                    updateVoiceUI(listening)
+                }
+            },
+            onPartialText = { text ->
+                runOnUiThread { input.setText(text) }
+            },
+            onTranscript = { text ->
+                // Не используется
+            },
+            onRmsChanged = { rms ->
+                runOnUiThread { waveformView.setAmplitude(rms) }
+            }
+        )
+        holdToTalk?.attach()
     }
 
     private fun submitInput(fromVoice: Boolean) {
@@ -270,7 +327,7 @@ class MainActivity : AppCompatActivity() {
         val text = t.ifBlank {
             if (att?.isImage == true) "Что на изображении?" else "Проанализируй файл."
         }
-        send(text, att)
+        send(text, att, fromVoice)
     }
 
     private fun addUiAndPersist(m: Msg, attachment: PendingAttachment?) {
@@ -295,13 +352,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun send(text: String, attachment: PendingAttachment?) {
+    private fun send(text: String, attachment: PendingAttachment?, fromVoice: Boolean = false) {
         input.setText("")
         val attachLabel = attachment?.name
         pendingAttachment = null
         updateAttachPreview()
 
-        val userMsg = Msg(true, text, attachmentLabel = attachLabel)
+        val userMsg = Msg(true, text, attachmentLabel = attachLabel, attachmentUri = attachment?.uri)
         msgs.add(userMsg)
         adapter.notifyItemInserted(msgs.size - 1)
 
@@ -339,7 +396,9 @@ class MainActivity : AppCompatActivity() {
                 adapter.notifyItemChanged(pendingIndex)
                 list.scrollToPosition(msgs.size - 1)
 
-                if (Prefs.speak(this)) {
+                // Умная озвучка: голос → текст+TTS, текст → только текст
+                // Проверка режима "Не беспокоить"
+                if (fromVoice && Prefs.speak(this) && !isDoNotDisturbActive()) {
                     tts?.speak(
                         reply.replace("*", "").replace("#", ""),
                         TextToSpeech.QUEUE_FLUSH,
@@ -348,6 +407,16 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
             }
+        }
+    }
+
+    private fun isDoNotDisturbActive(): Boolean {
+        return try {
+            val audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
+            audioManager?.ringerMode == AudioManager.RINGER_MODE_SILENT ||
+                    audioManager?.ringerMode == AudioManager.RINGER_MODE_VIBRATE
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -360,17 +429,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAttachmentMenu() {
-        val options = arrayOf("📷 Камера", "🖼️ Галерея", "📎 Файл")
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Прикрепить")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> cameraLauncher.launch(Intent(this, CameraActivity::class.java))
-                    1 -> galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
-                    2 -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
-                }
+        val sheet = AttachmentBottomSheet { choice ->
+            when (choice) {
+                AttachmentBottomSheet.Choice.CAMERA -> cameraLauncher.launch(Intent(this, CameraActivity::class.java))
+                AttachmentBottomSheet.Choice.GALLERY -> galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
+                AttachmentBottomSheet.Choice.FILE -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
             }
-            .show()
+        }
+        sheet.show(supportFragmentManager, "attachment_menu")
     }
 
     companion object {

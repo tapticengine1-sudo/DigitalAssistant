@@ -8,62 +8,60 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 
 /**
- * Hold-to-Talk: пока кнопка зажата — STT, по отпусканию — финальный текст в колбэк.
+ * VoiceInput в стиле Gemini: нажать один раз для записи, отображение волн,
+ * выбор - остановить и отредактировать или отправить сразу.
  */
 class HoldToTalk(
     private val activity: Activity,
     private val button: View,
     private val onListening: (Boolean) -> Unit,
     private val onPartialText: (String) -> Unit = {},
-    private val onTranscript: (String) -> Unit
+    private val onTranscript: (String) -> Unit,
+    private val onRmsChanged: (Float) -> Unit = {}
 ) {
     private var recognizer: SpeechRecognizer? = null
-    private var holding = false
+    private var isListening = false
     private var lastPartial = ""
     private var releasing = false
-    private var sendOnStop = false
 
     fun attach() {
         button.isClickable = true
         button.isFocusable = true
-        button.setOnTouchListener { v, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.parent?.requestDisallowInterceptTouchEvent(true)
-                    v.isPressed = true
-                    startHold()
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    v.isPressed = false
-                    v.performClick()
-                    stopHold(send = true)
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    v.isPressed = false
-                    stopHold(send = false)
-                    true
-                }
-                else -> false
+        button.setOnClickListener {
+            if (isListening) {
+                stopListening()
+            } else {
+                startListening()
+            }
+        }
+    }
+    
+    fun startListeningAuto() {
+        if (!isListening) startListening()
+    }
+
+    fun destroy() {
+        isListening = false
+        destroyRecognizer()
+        onListening(false)
+    }
+    
+    fun stopAndSend() {
+        if (isListening) {
+            stopListening()
+            val text = lastPartial.trim()
+            if (text.isNotEmpty()) {
+                onTranscript(text)
             }
         }
     }
 
-    fun destroy() {
-        holding = false
-        sendOnStop = false
-        destroyRecognizer()
-        onListening(false)
-    }
-
-    private fun startHold() {
+    private fun startListening() {
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -71,32 +69,24 @@ class HoldToTalk(
             activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
             return
         }
-        holding = true
-        sendOnStop = false
+        isListening = true
         lastPartial = ""
         destroyRecognizer()
-        startListening()
+        startRecognition()
     }
 
-    private fun stopHold(send: Boolean) {
-        if (!holding && !sendOnStop) {
-            onListening(false)
-            return
-        }
-        holding = false
-        sendOnStop = send
+    private fun stopListening() {
+        if (!isListening) return
+        isListening = false
         try {
             recognizer?.stopListening()
         } catch (_: Exception) {
-            finishFromPartial(send)
+            destroyRecognizer()
+            onListening(false)
         }
-        // Если onResults не придёт — отправим partial чуть позже
-        button.postDelayed({
-            if (sendOnStop) finishFromPartial(true)
-        }, 700)
     }
 
-    private fun startListening() {
+    private fun startRecognition() {
         if (releasing) return
         val r = ensureRecognizer() ?: return
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -112,8 +102,8 @@ class HoldToTalk(
         } catch (_: Exception) {
             destroyRecognizer()
             onListening(false)
-            if (holding) {
-                button.postDelayed({ if (holding) startListening() }, 400)
+            if (isListening) {
+                button.postDelayed({ if (isListening) startRecognition() }, 400)
             }
         }
     }
@@ -145,19 +135,14 @@ class HoldToTalk(
         releasing = false
     }
 
-    private fun finishFromPartial(send: Boolean) {
-        if (!sendOnStop && !send) return
-        sendOnStop = false
-        val text = lastPartial.trim()
-        destroyRecognizer()
-        onListening(false)
-        if (send && text.isNotEmpty()) onTranscript(text)
-    }
+
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(p: Bundle?) {}
         override fun onBeginningOfSpeech() {}
-        override fun onRmsChanged(v: Float) {}
+        override fun onRmsChanged(v: Float) {
+            activity.runOnUiThread { onRmsChanged(v) }
+        }
         override fun onBufferReceived(b: ByteArray?) {}
         override fun onEndOfSpeech() {}
         override fun onEvent(t: Int, p: Bundle?) {}
@@ -176,36 +161,29 @@ class HoldToTalk(
                 lastPartial = t
                 activity.runOnUiThread { onPartialText(t) }
             }
-            if (holding) {
+            if (isListening) {
                 destroyRecognizer()
-                startListening()
+                startRecognition()
                 return
             }
-            if (sendOnStop) finishFromPartial(true)
-            else {
-                destroyRecognizer()
-                onListening(false)
-            }
+            destroyRecognizer()
+            onListening(false)
         }
 
         override fun onError(error: Int) {
             if (releasing) return
-            if (holding &&
+            if (isListening &&
                 (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
                     error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_CLIENT ||
                     error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
             ) {
                 destroyRecognizer()
-                button.postDelayed({ if (holding) startListening() }, 350)
+                button.postDelayed({ if (isListening) startRecognition() }, 350)
                 return
             }
-            if (sendOnStop) {
-                finishFromPartial(true)
-            } else {
-                destroyRecognizer()
-                onListening(false)
-            }
+            destroyRecognizer()
+            onListening(false)
         }
     }
 }

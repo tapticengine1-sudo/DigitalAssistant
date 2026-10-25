@@ -31,4 +31,10 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
+    
+    // Coil для быстрой загрузки изображений
+    implementation("io.coil-kt:coil:2.5.0")
+    
+    // ExifInterface для правильной ориентации фото
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }

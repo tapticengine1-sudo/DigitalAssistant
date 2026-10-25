@@ -3,12 +3,9 @@ package com.example.assistant
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
-import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
@@ -39,12 +36,15 @@ class OverlayActivity : AppCompatActivity() {
     private lateinit var list: RecyclerView
     private lateinit var input: EditText
     private lateinit var micBtn: Button
+    private lateinit var sendBtn: Button
+    private lateinit var waveformView: WaveformView
     private var attachPreview: TextView? = null
     private lateinit var client: DeepSeekClient
     private lateinit var store: ChatStore
     private var conversationId: Long = -1L
     private var pendingAttachment: PendingAttachment? = null
     private var holdToTalk: HoldToTalk? = null
+    private var isVoiceInput = false
 
     private val cameraLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -101,6 +101,8 @@ class OverlayActivity : AppCompatActivity() {
         list = findViewById(R.id.list)
         input = findViewById(R.id.input)
         micBtn = findViewById(R.id.btnMic)
+        sendBtn = findViewById(R.id.btnSend)
+        waveformView = findViewById(R.id.waveform)
         attachPreview = findViewById(R.id.attachPreview)
         adapter = ChatAdapter(msgs)
         list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
@@ -111,18 +113,17 @@ class OverlayActivity : AppCompatActivity() {
             button = micBtn,
             onListening = { listening ->
                 runOnUiThread {
-                    micBtn.alpha = if (listening) 0.5f else 1f
-                    if (!listening) input.setText("")
+                    updateVoiceUI(listening)
                 }
             },
             onPartialText = { text ->
                 runOnUiThread { input.setText(text) }
             },
             onTranscript = { text ->
-                runOnUiThread {
-                    input.setText(text)
-                    submit()
-                }
+                // Callback не используется для автоотправки
+            },
+            onRmsChanged = { rms ->
+                runOnUiThread { waveformView.setAmplitude(rms) }
             }
         )
         holdToTalk?.attach()
@@ -143,17 +144,36 @@ class OverlayActivity : AppCompatActivity() {
             pendingAttachment = null
             updateAttachPreview()
         }
-        findViewById<Button>(R.id.btnSend).setOnClickListener { submit() }
+        sendBtn.setOnClickListener { 
+            if (isVoiceInput) {
+                // Мгновенная отправка голосового ввода
+                val text = input.text.toString().trim()
+                isVoiceInput = false
+                holdToTalk?.destroy()
+                updateVoiceUI(false)
+                if (text.isNotEmpty()) {
+                    submitWithVoiceFlag(true)
+                }
+                // Пересоздаем HoldToTalk после отправки
+                recreateHoldToTalk()
+            } else {
+                submit() 
+            }
+        }
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 submit(); true
             } else false
         }
 
-        if (intent.getBooleanExtra(EXTRA_FROM_HOTWORD, false)) {
-            Toast.makeText(this, "Джарвис на связи", Toast.LENGTH_SHORT).show()
+        // Автоматический запуск микрофона при вызове оверлея
+        if (intent.getBooleanExtra(EXTRA_FROM_HOTWORD, false) || intent.getBooleanExtra(EXTRA_START_VOICE, false)) {
+            input.postDelayed({
+                holdToTalk?.startListeningAuto()
+            }, 300)
+        } else {
+            input.post { focusInputAndShowKeyboard() }
         }
-        input.post { focusInputAndShowKeyboard() }
     }
 
     override fun onDestroy() {
@@ -249,6 +269,54 @@ class OverlayActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateVoiceUI(listening: Boolean) {
+        isVoiceInput = listening
+        if (listening) {
+            micBtn.text = "⏸"
+            sendBtn.text = "➤"
+            sendBtn.visibility = View.VISIBLE
+            waveformView.visibility = View.VISIBLE
+        } else {
+            micBtn.text = "🎤"
+            sendBtn.text = "➤"
+            waveformView.visibility = View.GONE
+            waveformView.reset()
+        }
+    }
+    
+    private fun recreateHoldToTalk() {
+        holdToTalk = HoldToTalk(
+            activity = this,
+            button = micBtn,
+            onListening = { listening ->
+                runOnUiThread {
+                    updateVoiceUI(listening)
+                }
+            },
+            onPartialText = { text ->
+                runOnUiThread { input.setText(text) }
+            },
+            onTranscript = { text ->
+                // Не используется
+            },
+            onRmsChanged = { rms ->
+                runOnUiThread { waveformView.setAmplitude(rms) }
+            }
+        )
+        holdToTalk?.attach()
+    }
+    
+    private fun submitWithVoiceFlag(fromVoice: Boolean) {
+        val t = input.text.toString().trim()
+        val att = pendingAttachment
+        if (t.isEmpty() && att == null) return
+        val text = t.ifBlank {
+            if (att?.isImage == true) "Что на изображении?" else "Проанализируй файл."
+        }
+        send(text, att)
+        // В оверлее пока не озвучиваем, но флаг можно использовать позже
+    }
+
     private fun submit() {
         val t = input.text.toString().trim()
         val att = pendingAttachment
@@ -262,10 +330,13 @@ class OverlayActivity : AppCompatActivity() {
     private fun send(text: String, attachment: PendingAttachment?) {
         input.setText("")
         val label = attachment?.name
+        val wasVoice = isVoiceInput
+        isVoiceInput = false
         pendingAttachment = null
         updateAttachPreview()
+        updateVoiceUI(false)
 
-        val userMsg = Msg(true, text, attachmentLabel = label)
+        val userMsg = Msg(true, text, attachmentLabel = label, attachmentUri = attachment?.uri)
         msgs.add(userMsg)
         list.visibility = View.VISIBLE
         adapter.notifyItemInserted(msgs.lastIndex)
@@ -308,32 +379,25 @@ class OverlayActivity : AppCompatActivity() {
         }
     }
 
-    private fun showAttachmentMenu() {
-        val options = arrayOf("📷 Камера", "🖼️ Галерея", "📎 Файл")
-        AlertDialog.Builder(this)
-            .setTitle("Прикрепить")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> openCamera()
-                    1 -> openGallery()
-                    2 -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
-                }
-            }
-            .show()
-    }
-
-    private fun openCamera() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.CAMERA), 100)
-            return
+    private fun isDoNotDisturbActive(): Boolean {
+        return try {
+            val audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
+            audioManager?.ringerMode == AudioManager.RINGER_MODE_SILENT ||
+                    audioManager?.ringerMode == AudioManager.RINGER_MODE_VIBRATE
+        } catch (e: Exception) {
+            false
         }
-        cameraLauncher.launch(Intent(this, CameraActivity::class.java))
     }
 
-    private fun openGallery() {
-        galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
+    private fun showAttachmentMenu() {
+        val sheet = AttachmentBottomSheet { choice ->
+            when (choice) {
+                AttachmentBottomSheet.Choice.CAMERA -> cameraLauncher.launch(Intent(this, CameraActivity::class.java))
+                AttachmentBottomSheet.Choice.GALLERY -> galleryLauncher.launch(Intent(this, GalleryActivity::class.java))
+                AttachmentBottomSheet.Choice.FILE -> pickFile.launch(arrayOf("image/*", "text/*", "application/pdf", "*/*"))
+            }
+        }
+        sheet.show(supportFragmentManager, "attachment_menu")
     }
 
     companion object {

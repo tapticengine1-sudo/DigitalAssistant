@@ -42,6 +42,13 @@
         android:textColor="@color/ptako_blue_soft"
         android:visibility="gone" />
 
+    <com.example.assistant.WaveformView
+        android:id="@+id/waveform"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

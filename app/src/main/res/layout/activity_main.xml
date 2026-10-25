@@ -6,11 +6,13 @@
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
-    <FrameLayout
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:background="@color/ptako_surface"
         android:elevation="2dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
         android:paddingStart="4dp"
         android:paddingEnd="4dp">
 
@@ -19,7 +21,6 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_gravity="start|center_vertical"
             android:contentDescription="История и поиск"
             android:minWidth="0dp"
             android:padding="0dp"
@@ -29,38 +30,46 @@
 
         <TextView
             android:id="@+id/title"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
             android:text="@string/app_name"
             android:textColor="@color/ptako_text"
             android:textSize="18sp"
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/btnNewChat"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="4dp"
+            android:backgroundTint="@color/ptako_blue"
+            android:contentDescription="Новый чат"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:text="+"
+            android:textColor="@android:color/white"
+            android:textSize="18sp" />
+
+        <Button
             android:id="@+id/btnSettings"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_gravity="end|center_vertical"
             android:contentDescription="Настройки"
             android:minWidth="0dp"
             android:padding="0dp"
             android:text="⚙"
             android:textColor="@color/ptako_text"
             android:textSize="22sp" />
-    </FrameLayout>
+    </LinearLayout>
 
-    <Button
-        android:id="@+id/btnNewChat"
-        style="@style/Widget.Material3.Button.TonalButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="16dp"
-        android:text="@string/new_chat"
-        android:textColor="@color/ptako_text" />
+
 
     <Button
         android:id="@+id/btnSearch"
@@ -77,79 +86,92 @@
         android:paddingTop="4dp"
         android:paddingBottom="4dp" />
 
-    <TextView
-        android:id="@+id/attachPreview"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="4dp"
-        android:textColor="@color/ptako_blue_soft"
-        android:visibility="gone" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/ptako_surface"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="6dp"
+        android:orientation="vertical"
         android:paddingTop="8dp"
-        android:paddingEnd="6dp"
         android:paddingBottom="8dp">
 
-        <Button
-            android:id="@+id/btnAttach"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="44dp"
-            android:layout_height="48dp"
-            android:contentDescription="Вложение"
-            android:minWidth="0dp"
-            android:padding="0dp"
-            android:text="📎"
-            android:textSize="20sp" />
-
-        <EditText
-            android:id="@+id/input"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/attachPreview"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_input"
-            android:hint="@string/hint_write"
-            android:imeOptions="actionSend"
-            android:importantForAutofill="no"
-            android:inputType="textMultiLine|textCapSentences"
-            android:maxLines="4"
-            android:paddingStart="14dp"
-            android:paddingTop="10dp"
-            android:paddingEnd="14dp"
-            android:paddingBottom="10dp"
-            android:textColor="@color/ptako_text"
-            android:textColorHint="@color/ptako_text_muted" />
-
-        <Button
-            android:id="@+id/btnMic"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="44dp"
-            android:layout_height="48dp"
-            android:contentDescription="@string/hold_to_talk"
-            android:minWidth="0dp"
-            android:padding="0dp"
-            android:text="🎤"
-            android:textSize="20sp" />
-
-        <Button
-            android:id="@+id/btnSend"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="44dp"
-            android:layout_height="48dp"
-            android:contentDescription="Отправить"
-            android:minWidth="0dp"
-            android:padding="0dp"
-            android:text="➤"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="4dp"
             android:textColor="@color/ptako_blue_soft"
-            android:textSize="22sp" />
+            android:visibility="gone" />
+
+        <com.example.assistant.WaveformView
+            android:id="@+id/waveform"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
+
+            <Button
+                android:id="@+id/btnAttach"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="44dp"
+                android:layout_height="48dp"
+                android:contentDescription="Вложение"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="📎"
+                android:textSize="20sp" />
+
+            <EditText
+                android:id="@+id/input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input"
+                android:hint="@string/hint_write"
+                android:imeOptions="actionSend"
+                android:importantForAutofill="no"
+                android:inputType="textMultiLine|textCapSentences"
+                android:maxLines="4"
+                android:paddingStart="14dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="14dp"
+                android:paddingBottom="10dp"
+                android:textColor="@color/ptako_text"
+                android:textColorHint="@color/ptako_text_muted" />
+
+            <Button
+                android:id="@+id/btnMic"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="44dp"
+                android:layout_height="48dp"
+                android:contentDescription="Голосовой ввод"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="🎤"
+                android:textSize="20sp" />
+
+            <Button
+                android:id="@+id/btnSend"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="44dp"
+                android:layout_height="48dp"
+                android:contentDescription="Отправить"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="➤"
+                android:textColor="@color/ptako_blue_soft"
+                android:textSize="22sp" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

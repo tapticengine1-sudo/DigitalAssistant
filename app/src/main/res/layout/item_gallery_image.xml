@@ -8,5 +8,20 @@
         android:id="@+id/imageView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerCrop" />
+        android:scaleType="centerCrop"
+        android:contentDescription="Фото из галереи" />
+
+    <CheckBox
+        android:id="@+id/checkBox"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="6dp"
+        android:background="@drawable/bg_checkbox"
+        android:buttonTint="@color/ptako_blue"
+        android:checked="false"
+        android:clickable="false"
+        android:elevation="2dp"
+        android:focusable="false"
+        android:visibility="gone" />
 </FrameLayout>
