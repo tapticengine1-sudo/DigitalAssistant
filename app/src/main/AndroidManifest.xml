@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -10,7 +9,6 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
@@ -28,9 +26,6 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 
@@ -71,7 +66,6 @@
         <activity android:name=".SettingsActivity" android:exported="true" />
         <activity android:name=".HistoryActivity" android:exported="false" />
         <activity android:name=".CameraActivity" android:exported="false" android:screenOrientation="portrait" />
-        <activity android:name=".GalleryActivity" android:exported="false" />
 
         <service
             android:name=".AssistService"
@@ -89,11 +83,6 @@
             android:name=".AssistSessionService"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
-
-        <service
-            android:name=".StubRecognitionService"
-            android:exported="true"
-            android:permission="android.permission.BIND_RECOGNITION_SERVICE" />
 
         
     </application>

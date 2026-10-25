@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode != RESULT_OK) return@registerForActivityResult
         val data = result.data ?: return@registerForActivityResult
         when {
-            data.getBooleanExtra(EXTRA_NEW_CHAT, false) -> startNewConversation(showGreeting = true)
+            data.getBooleanExtra(EXTRA_NEW_CHAT, false) -> startNewConversation()
             data.hasExtra(EXTRA_CONVERSATION_ID) ->
                 loadConversation(data.getLongExtra(EXTRA_CONVERSATION_ID, -1L))
         }
@@ -168,7 +168,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnNewChat).setOnClickListener {
-            startNewConversation(showGreeting = false)
+            startNewConversation()
         }
 
         findViewById<Button>(R.id.btnSearch).setOnClickListener {
